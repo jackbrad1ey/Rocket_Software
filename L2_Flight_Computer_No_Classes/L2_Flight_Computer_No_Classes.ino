@@ -46,6 +46,7 @@ bool newBaroData = false;
 bool newMSBaroData = false;
 bool sendGPS = false;
 bool calibrateMPUFlag = false;
+bool motorArmed = false;
 
 typedef struct {
   unsigned long totalMillis;
@@ -587,6 +588,13 @@ void Task2code( void * pvParameters ) {
   }
 }
 
+//Task3code:
+/*
+  This code handles controlling the motor and running the PID loop
+*/
+void Task3code( void * pvParameters ) {
+
+}
 
 void onReceive(int packetSize) {
   Serial.println("Recieved packet");
@@ -616,11 +624,8 @@ void onReceive(int packetSize) {
     Serial.println("Shutting down sensor");
   }
   else if (inByte == 4) {
-    //  Function that initiates the buzzer
-    //  If the rocket acceleration is below an average of 2g start buzzer
-    //void buzzer {
-    //
-    //}
+    // arms DC motor, allowing it to spin when told
+    motorArmed = true;
   }
 
 }
