@@ -209,15 +209,15 @@ void setup() {
     1);          /* pin task to core 1 */
   delay(500);
 
-  xTaskCreate(
-    Task3code,
-    "Task3",
-    256,
-    NULL,
-    2,
-    &Task3
-  );
-  delay(500);
+  // xTaskCreate(
+  //   Task3code,
+  //   "Task3",
+  //   256,
+  //   NULL,
+  //   2,
+  //   &Task3
+  // );
+  // delay(500);
 }
 
 void loop() {
@@ -240,8 +240,28 @@ void Task1code( void * pvParameters ) {
   // put the radio into receive mode
   LoRa.receive();
 
+  pinMode(MOTOR_PWM_PIN, OUTPUT);
+
   for (;;) {
     while (launchProceedure) {
+      lastTime = timeNow;
+      timeNow = imuData.totalMillis;
+
+      float dt = (timeNow - lastTime) / 1E3;
+
+      proportional_error = imuData.gyroX - SETPOINT_ROLL;
+      integral_error += proportional_error * dt;
+
+      derivative_error += proportional_error / dt;
+
+      float motor_output = Kp * proportional_error + Ki * integral_error + Kd * derivative_error;
+
+      analogWrite(MOTOR_PWM_PIN, OUTPUT);
+
+      char report[300];
+      sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\n");
+      Serial.println(report);
+    
       //    Transmit data to ground
       uint32_t imuChecksum = 0;
       byte IMUtransmittBuffer[sizeof(imuUnion.imuByteArray)];
@@ -619,29 +639,29 @@ void Task2code( void * pvParameters ) {
 /*
   This code handles controlling the motor and running the PID loop
 */
-void Task3code( void * pvParameters ) {
-  pinMode(MOTOR_PWM_PIN, OUTPUT);
+// void Task3code( void * pvParameters ) {
+//   pinMode(MOTOR_PWM_PIN, OUTPUT);
   
-  for (;;) {
-    lastTime = timeNow;
-    timeNow = imuData.totalMillis;
+//   for (;;) {
+//     lastTime = timeNow;
+//     timeNow = imuData.totalMillis;
 
-    float dt = (timeNow - lastTime) / 1E3;
+//     float dt = (timeNow - lastTime) / 1E3;
 
-    proportional_error = imuData.gyroX - SETPOINT_ROLL;
-    integral_error += proportional_error * dt;
+//     proportional_error = imuData.gyroX - SETPOINT_ROLL;
+//     integral_error += proportional_error * dt;
 
-    derivative_error += proportional_error / dt;
+//     derivative_error += proportional_error / dt;
 
-    float motor_output = Kp * proportional_error + Ki * integral_error + Kd * derivative_error;
+//     float motor_output = Kp * proportional_error + Ki * integral_error + Kd * derivative_error;
 
-    analogWrite(MOTOR_PWM_PIN, OUTPUT);
+//     analogWrite(MOTOR_PWM_PIN, OUTPUT);
 
-    char report[300];
-    sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\n");
-    Serial.println(report);
-  }
-}
+//     char report[300];
+//     sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\n");
+//     Serial.println(report);
+//   }
+// }
 
 void onReceive(int packetSize) {
   Serial.println("Recieved packet");
