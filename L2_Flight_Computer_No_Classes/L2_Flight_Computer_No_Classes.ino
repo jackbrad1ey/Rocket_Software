@@ -125,6 +125,7 @@ TinyGPSPlus gps;
 Adafruit_MPU6050 mpu;
 TaskHandle_t Task1;
 TaskHandle_t Task2;
+TaskHandle_t Task3;
 
 imu imuData;
 GPS GPSData;
@@ -159,6 +160,22 @@ SemaphoreHandle_t xSemaphore = NULL;
 
 MS5611 ms5611;                                                   // Initalise MS5611 library
 
+// PID stuff
+const int MOTOR_PWM_PIN = 33;
+
+float Kp = 1400;
+float Ki = 2.7;
+float Kd = 3.1;
+
+float SETPOINT_ROLL = 0;
+
+float proportional_error = 0;
+float integral_error = 0;
+float derivative_error = 0;
+
+int timeNow = 0;
+int lastTime = 0;
+
 void setup() {
 
   Serial.begin(115200);
@@ -190,6 +207,16 @@ void setup() {
     1,           /* priority of the task */
     &Task2,      /* Task handle to keep track of created task */
     1);          /* pin task to core 1 */
+  delay(500);
+
+  xTaskCreate(
+    Task3code,
+    "Task3",
+    256,
+    NULL,
+    2,
+    &Task3
+  );
   delay(500);
 }
 
@@ -593,7 +620,27 @@ void Task2code( void * pvParameters ) {
   This code handles controlling the motor and running the PID loop
 */
 void Task3code( void * pvParameters ) {
+  pinMode(MOTOR_PWM_PIN, OUTPUT);
+  
+  for (;;) {
+    lastTime = timeNow;
+    timeNow = imuData.totalMillis;
 
+    float dt = (timeNow - lastTime) / 1E3;
+
+    proportional_error = imuData.gyroX - SETPOINT_ROLL;
+    integral_error += proportional_error * dt;
+
+    derivative_error += proportional_error / dt;
+
+    float motor_output = Kp * proportional_error + Ki * integral_error + Kd * derivative_error;
+
+    analogWrite(MOTOR_PWM_PIN, OUTPUT);
+
+    char report[300];
+    sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\n");
+    Serial.println(report);
+  }
 }
 
 void onReceive(int packetSize) {

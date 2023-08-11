@@ -17,21 +17,6 @@ header = 0
 MSAltitude = 0
 timeMs = 0
 MSVelocity = 0
-global totalMillis
-global latt
-global longi
-global alt
-global tStamp
-global heading
-global numSat
-global checkSum
-global accX
-global accY
-global accZ
-global gyroX
-global gyroY
-global gyroZ
-global tempC
 
 # Open log file
 os.chdir("FlightData")
