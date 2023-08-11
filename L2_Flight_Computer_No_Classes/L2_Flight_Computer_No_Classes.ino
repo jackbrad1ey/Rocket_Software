@@ -259,7 +259,7 @@ void Task1code( void * pvParameters ) {
       analogWrite(MOTOR_PWM_PIN, OUTPUT);
 
       char report[300];
-      sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\n");
+      sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\n", proportional_error, integral_error, derivative_error, motor_output);
       Serial.println(report);
     
       //    Transmit data to ground
