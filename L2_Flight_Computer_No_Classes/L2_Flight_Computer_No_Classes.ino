@@ -209,15 +209,16 @@ void setup() {
     1);          /* pin task to core 1 */
   delay(500);
 
-  // xTaskCreate(
-  //   Task3code,
-  //   "Task3",
-  //   256,
-  //   NULL,
-  //   2,
-  //   &Task3
-  // );
-  // delay(500);
+  xTaskCreatePinnedToCore(
+    Task3code,
+    "Task3",
+    10000,
+    NULL,
+    2,
+    &Task3,
+    2
+  );
+  delay(500);
 }
 
 void loop() {
@@ -244,24 +245,6 @@ void Task1code( void * pvParameters ) {
 
   for (;;) {
     while (launchProceedure) {
-      lastTime = timeNow;
-      timeNow = imuData.totalMillis;
-
-      float dt = (timeNow - lastTime) / 1E3;
-
-      proportional_error = imuData.gyroX - SETPOINT_ROLL;
-      integral_error += proportional_error * dt;
-
-      derivative_error += proportional_error / dt;
-
-      float motor_output = Kp * proportional_error + Ki * integral_error + Kd * derivative_error;
-
-      analogWrite(MOTOR_PWM_PIN, OUTPUT);
-
-      char report[300];
-      sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\n", proportional_error, integral_error, derivative_error, motor_output);
-      Serial.println(report);
-    
       //    Transmit data to ground
       uint32_t imuChecksum = 0;
       byte IMUtransmittBuffer[sizeof(imuUnion.imuByteArray)];
@@ -339,7 +322,7 @@ void Task1code( void * pvParameters ) {
           LoRa.beginPacket();
           LoRa.write(0x6);
           LoRa.write((uint8_t*)&GPStransmittBuffer, sizeof(GPStransmittBuffer));
-          //          Serial.println(sizeof(GPStransmittBuffer) + sizeof(GPSChecksum));
+                  //  Serial.println(sizeof(GPStransmittBuffer) + sizeof(GPSChecksum));
           // Send 32bit CRC
           LoRa.write(GPSChecksum);
           LoRa.write((GPSChecksum >> 8) & 0xFF);
@@ -368,7 +351,7 @@ void Task2code( void * pvParameters ) {
     errorBlink(1);
   }
 
-  dpln("Starting MS5611");
+  dpln("Starting MPU6050");
   while (!mpu.begin()) {
     Serial.println("Failed to find MPU6050 chip");
     errorBlink(2);
@@ -376,25 +359,25 @@ void Task2code( void * pvParameters ) {
   mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
   mpu.setGyroRange(MPU6050_RANGE_1000_DEG);
   
-  dpln("Starting MPU6050");
+  dpln("Starting MS5611");
   while (!ms5611.begin(MS5611_ULTRA_HIGH_RES)) {
     Serial.println(F("Error connecting to barometer"));
     errorBlink(1);
   }
   dpln("Creating file name");
   for (int i = 0; i < 100; i++) {
+    Serial.println("Please for the love of god");
     if (SD.exists(dirname)) {
       dirname[strlen(dirname) - 3] = '\0';
       sprintf(dirname, "%s%03d", dirname, i);
-    }
-    else {
+    } else {
       sprintf(dirname, "%s%03d", dirname, i);
       dirname[strlen(dirname) - 3] = '\0';
       SD.mkdir(dirname);
       break;
     }
   }
-
+  Serial.println("You alive?");
   strcpy(baroFileName, dirname);
   char baroF[12] = "/C3baro.csv";
   strcat(baroFileName, baroF);
@@ -402,7 +385,7 @@ void Task2code( void * pvParameters ) {
   String AltimeterHead = "Time (ms), Altitude (m), Velocity (m/s), Temperature (degC), Events";
   RRC3baroFile.print(AltimeterHead);
   RRC3baroFile.flush();
-
+  Serial.println("Still alive??");
   strcpy(baroFileName, dirname);
   strcpy(baroF, "/MSbaro.csv");
   strcat(baroFileName, baroF);
@@ -426,7 +409,7 @@ void Task2code( void * pvParameters ) {
   String GPSDataHead = "Lattitude , Longitude, Altitude (m), Timestamp (HHMMSSCC), Number of Satellites, Heading (deg), Speed (m/s)";
   GPSDataFile.println(GPSDataHead);
   GPSDataFile.flush();
-
+  Serial.println("how about now?");
   //   Setup GPS
   Serial2.print( F("$PMTK251,115200*1F\r\n") );                         // set 115200 baud rate
   Serial2.flush();                                                      // wait for the command to go out
@@ -450,7 +433,7 @@ void Task2code( void * pvParameters ) {
       //  Get imu datat
       sensors_event_t acc, gyr, temp;
       mpu.getEvent(&acc, &gyr, &temp);                  // Blocking call -> check if new data and only poll if there is
-
+      // Serial.printf("%f, %f, %f\r\n", gyr.gyro.x, gyr.gyro.y, gyr.gyro.z);
       if ( xSemaphore != NULL )
       {
         /* See if we can obtain the semaphore.  If the semaphore is not
@@ -464,8 +447,8 @@ void Task2code( void * pvParameters ) {
           imuUnion.imuData.accZ = (acc.acceleration.z - accZoffset) * 100;
 
           imuUnion.imuData.gyroX = (gyr.gyro.x - gyroXoffset) * 100;
-          imuUnion.imuData.gyroY = (gyr.gyro.x - gyroYoffset) * 100;
-          imuUnion.imuData.gyroZ = (gyr.gyro.x - gyroZoffset) * 100;
+          imuUnion.imuData.gyroY = (gyr.gyro.y - gyroYoffset) * 100;
+          imuUnion.imuData.gyroZ = (gyr.gyro.z - gyroZoffset) * 100;
           imuUnion.imuData.tempC = temp.temperature * 100;
           xSemaphoreGive( xSemaphore );                             // Release semaphore
         }
@@ -483,7 +466,7 @@ void Task2code( void * pvParameters ) {
       sprintf(imuArray, "%s,%s,%s,%s,%s,%s,%s,%s", a, b, c, d, e, f, g, h);     //  Convert to character array
 
       //  Write imu data to SD
-//      dpln(imuArray);
+      // dpln(imuArray);
       IMUDataFile.println(imuArray);
 
       // *************************************************************************  Barometer *********************************************************************************
@@ -639,29 +622,29 @@ void Task2code( void * pvParameters ) {
 /*
   This code handles controlling the motor and running the PID loop
 */
-// void Task3code( void * pvParameters ) {
-//   pinMode(MOTOR_PWM_PIN, OUTPUT);
-  
-//   for (;;) {
-//     lastTime = timeNow;
-//     timeNow = imuData.totalMillis;
+void Task3code( void * pvParameters ) {
+  pinMode(MOTOR_PWM_PIN, OUTPUT);
+  Serial.println("Hel me please");
+  for (;;) {
+    lastTime = timeNow;
+    timeNow = millis();
 
-//     float dt = (timeNow - lastTime) / 1E3;
+    float dt = (timeNow - lastTime) / 1E3;
 
-//     proportional_error = imuData.gyroX - SETPOINT_ROLL;
-//     integral_error += proportional_error * dt;
+    proportional_error = SETPOINT_ROLL - imuUnion.imuData.gyroX;
+    integral_error += proportional_error * dt;
 
-//     derivative_error += proportional_error / dt;
+    derivative_error += proportional_error / dt;
 
-//     float motor_output = Kp * proportional_error + Ki * integral_error + Kd * derivative_error;
+    float motor_output = Kp * proportional_error + Ki * integral_error + Kd * derivative_error;
 
-//     analogWrite(MOTOR_PWM_PIN, OUTPUT);
+    analogWrite(MOTOR_PWM_PIN, OUTPUT);
 
-//     char report[300];
-//     sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\n");
-//     Serial.println(report);
-//   }
-// }
+    char report[100];
+    sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\tDt: %f\n", proportional_error, integral_error, derivative_error, motor_output, dt);
+    Serial.println(report);
+  }
+}
 
 void onReceive(int packetSize) {
   Serial.println("Recieved packet");
