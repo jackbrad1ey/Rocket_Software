@@ -202,7 +202,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     Task2code,   /* Task function. */
     "Task2",     /* name of task. */
-    10000,       /* Stack size of task */
+    8000,       /* Stack size of task */
     NULL,        /* parameter of the task */
     1,           /* priority of the task */
     &Task2,      /* Task handle to keep track of created task */
@@ -212,11 +212,11 @@ void setup() {
   xTaskCreatePinnedToCore(
     Task3code,
     "Task3",
-    10000,
+    2000,
     NULL,
-    2,
+    1,
     &Task3,
-    2
+    1
   );
   delay(500);
 }
@@ -371,9 +371,13 @@ void Task2code( void * pvParameters ) {
       dirname[strlen(dirname) - 3] = '\0';
       sprintf(dirname, "%s%03d", dirname, i);
     } else {
+      Serial.println("I");
       sprintf(dirname, "%s%03d", dirname, i);
+      Serial.println("Love");
       dirname[strlen(dirname) - 3] = '\0';
+      Serial.println("Print statement");
       SD.mkdir(dirname);
+      Serial.println("Debugging");
       break;
     }
   }
@@ -381,9 +385,12 @@ void Task2code( void * pvParameters ) {
   strcpy(baroFileName, dirname);
   char baroF[12] = "/C3baro.csv";
   strcat(baroFileName, baroF);
+  Serial.println("This is getting a bit ridiculous");
   RRC3baroFile = SD.open(baroFileName, FILE_WRITE);
+  Serial.println("Surely not");
   String AltimeterHead = "Time (ms), Altitude (m), Velocity (m/s), Temperature (degC), Events";
   RRC3baroFile.print(AltimeterHead);
+  Serial.println("I'm going to cry");
   RRC3baroFile.flush();
   Serial.println("Still alive??");
   strcpy(baroFileName, dirname);
@@ -440,6 +447,7 @@ void Task2code( void * pvParameters ) {
           available wait 10 ticks to see if it becomes free. */
         if ( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE )
         {
+          // Serial.println("Do we be working???");
           imuUnion.imuData.totalMillis = millis();         // Log aquisition time
 
           imuUnion.imuData.accX = (acc.acceleration.x - accXoffset) * 100;
@@ -450,6 +458,8 @@ void Task2code( void * pvParameters ) {
           imuUnion.imuData.gyroY = (gyr.gyro.y - gyroYoffset) * 100;
           imuUnion.imuData.gyroZ = (gyr.gyro.z - gyroZoffset) * 100;
           imuUnion.imuData.tempC = temp.temperature * 100;
+
+          // Serial.println(imuUnion.imuData.gyroX);
           xSemaphoreGive( xSemaphore );                             // Release semaphore
         }
       }
@@ -624,13 +634,16 @@ void Task2code( void * pvParameters ) {
 */
 void Task3code( void * pvParameters ) {
   pinMode(MOTOR_PWM_PIN, OUTPUT);
-  Serial.println("Hel me please");
+  // Serial.println("Hel me please");
   for (;;) {
     lastTime = timeNow;
     timeNow = millis();
-
-    float dt = (timeNow - lastTime) / 1E3;
-
+    // Serial.println("------------");
+    // Serial.println(lastTime);
+    // Serial.println(timeNow);
+    float dt = (timeNow - lastTime) / 1000.0;
+    // Serial.println(timeNow - lastTime);
+    // Serial.println(dt);
     proportional_error = SETPOINT_ROLL - imuUnion.imuData.gyroX;
     integral_error += proportional_error * dt;
 
@@ -641,8 +654,10 @@ void Task3code( void * pvParameters ) {
     analogWrite(MOTOR_PWM_PIN, OUTPUT);
 
     char report[100];
-    sprintf(report, "Pe: %f\tIe: %f\tDe: %f\nOutput: %f\tDt: %f\n", proportional_error, integral_error, derivative_error, motor_output, dt);
+    sprintf(report, "GryX: %d\tPe: %f\tIe: %f\tDe: %f\nOutput: %f\tDt: %f\n", imuUnion.imuData.gyroX, proportional_error, integral_error, derivative_error, motor_output, dt);
     Serial.println(report);
+
+    delay(10);
   }
 }
 
