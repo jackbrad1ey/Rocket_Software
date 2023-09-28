@@ -23,6 +23,7 @@ void dpln(char* msg) {
 #include "SD.h"
 #include <TinyGPS++.h>
 #include <MS5611.h>
+#include <Servo.h>
 
 Arduino_CRC32 crc32;
 
@@ -47,6 +48,17 @@ bool newMSBaroData = false;
 bool sendGPS = false;
 bool calibrateMPUFlag = false;
 bool motorArmed = false;
+
+// NOTE: FILL THIS STUFF IN ONCE ESC IS CONFIGURED
+#define ESC_MIN_PPM     0
+#define ESC_MAX_PPM     0
+#define ESC_NEUTRAL_PPM 0
+
+#define ESC_ARM_SIGNAL  1000  // might need to be changed
+#define ESC_ARM_TIME    2000  // might need to be changed
+
+#define ESC_CONTROL_PIN 32  // confirm pin number
+Servo esc;
 
 typedef struct {
   unsigned long totalMillis;
@@ -177,7 +189,6 @@ int timeNow = 0;
 int lastTime = 0;
 
 void setup() {
-
   Serial.begin(115200);
   pinMode(LEDPin, OUTPUT);
   Wire.begin();
@@ -186,7 +197,8 @@ void setup() {
   xSemaphore = xSemaphoreCreateMutex();             // Create semaphore to protect data while writing  
   pinMode(irqPin, INPUT);
   
-
+  esc.attach(ESC_CONTROL_PIN, ESC_MIN_PPM, ESC_MAX_PPM);
+  initESC()
   //create a task that will a executed in the Task1code() function, with priority 1 and executed on core 0
   xTaskCreatePinnedToCore(
     Task1code,   /* Task function. */
@@ -738,4 +750,15 @@ void calibrateMPU() {
   Serial.printf("X gyro offset: %0.6f\r\n", gyroXoffset);
   Serial.printf("Y gyro offset: %0.6f\r\n", gyroYoffset);
   Serial.printf("Z gyro offset: %0.6f\r\n", gyroZoffset);
+}
+
+void initESC() {
+  esc.writeMicroseconds(ESC_ARM_SIGNAL);
+  unsigned long now = millis();
+  while (millis() < now + ESC_ARM_TIME){}
+}
+
+void writeSpeed(int speed) {
+  // may need some additional logic to include a deadzone, etc
+  esc.writeMicroseconds(speed);
 }
