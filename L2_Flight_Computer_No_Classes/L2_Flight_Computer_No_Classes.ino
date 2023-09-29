@@ -57,8 +57,10 @@ bool motorArmed = false;
 #define ESC_ARM_SIGNAL  1000  // might need to be changed
 #define ESC_ARM_TIME    2000  // might need to be changed
 
-#define ESC_CONTROL_PIN 32  // confirm pin number
+#define ESC_CONTROL_PIN 33  // confirm pin number
 Servo esc;
+
+int speed = ESC_NEUTRAL_PPM;
 
 typedef struct {
   float prev_error;
@@ -184,18 +186,11 @@ SemaphoreHandle_t xSemaphore = NULL;
 MS5611 ms5611;                                                   // Initalise MS5611 library
 
 // PID stuff
-const int MOTOR_PWM_PIN = 33;
-
-float Kp = 1400;
-float Ki = 2.7;
-float Kd = 3.1;
-
 float SETPOINT_ROLL = 0;
+float error = 0;
+float pid_out = 0;
 
-float proportional_error = 0;
-float integral_error = 0;
-float derivative_error = 0;
-
+float dt = 0;
 int timeNow = 0;
 int lastTime = 0;
 
@@ -669,26 +664,16 @@ void Task3code( void * pvParameters ) {
       continue;
     }
 
+    error = SETPOINT_ROLL - imuUnion.imuData.gyroX;
+
     lastTime = timeNow;
     timeNow = millis();
-    // Serial.println("------------");
-    // Serial.println(lastTime);
-    // Serial.println(timeNow);
-    float dt = (timeNow - lastTime) / 1000.0;
-    // Serial.println(timeNow - lastTime);
-    // Serial.println(dt);
-    proportional_error = SETPOINT_ROLL - imuUnion.imuData.gyroX;
-    integral_error += proportional_error * dt;
+    dt = timeNow - lastTime;
 
-    derivative_error += proportional_error / dt;
+    pid_out = PID(error, dt);  // maybe clamp output so it can't ramp up speed toooooo fast
 
-    float motor_output = Kp * proportional_error + Ki * integral_error + Kd * derivative_error;
-
-    analogWrite(MOTOR_PWM_PIN, OUTPUT);
-
-    char report[100];
-    sprintf(report, "GryX: %d\tPe: %f\tIe: %f\tDe: %f\nOutput: %f\tDt: %f\n", imuUnion.imuData.gyroX, proportional_error, integral_error, derivative_error, motor_output, dt);
-    Serial.println(report);
+    speed += pid_out * dt;  // take the integral of PID output, add to speed
+    writeSpeed(speed);  // send instruction to ESC
 
     delay(10);
   }
@@ -780,6 +765,12 @@ void initESC() {
 
 void writeSpeed(int speed) {
   // may need some additional logic to include a deadzone, etc
+  if (speed > ESC_MAX_PPM) {
+    speed = ESC_MAX_PPM;
+  } else if (speed < ESC_MIN_PPM) {
+    speed = ESC_MIN_PPM;
+  }
+
   esc.writeMicroseconds(speed);
 }
 
