@@ -61,6 +61,15 @@ bool motorArmed = false;
 Servo esc;
 
 typedef struct {
+  float prev_error;
+  float integral;
+  float max_integral;
+  float Kp;
+  float Kt;
+  float Kd;
+} PID_data;
+
+typedef struct {
   unsigned long totalMillis;
   int accX;
   int accY;
@@ -138,6 +147,8 @@ Adafruit_MPU6050 mpu;
 TaskHandle_t Task1;
 TaskHandle_t Task2;
 TaskHandle_t Task3;
+
+PID_data pid;
 
 imu imuData;
 GPS GPSData;
@@ -645,9 +656,19 @@ void Task2code( void * pvParameters ) {
   This code handles controlling the motor and running the PID loop
 */
 void Task3code( void * pvParameters ) {
-  pinMode(MOTOR_PWM_PIN, OUTPUT);
   // Serial.println("Hel me please");
+  // set parameters for the control system
+  pid.Kd = 0;
+  pid.Kp = 0;
+  pid.Kt = 0;
+  pid.max_integral = 0;
+
   for (;;) {
+    if (!motorArmed) {
+      writeSpeed(ESC_NEUTRAL_PPM);  // ensure we're not spinning the motor when it is not armed
+      continue;
+    }
+
     lastTime = timeNow;
     timeNow = millis();
     // Serial.println("------------");
@@ -704,7 +725,6 @@ void onReceive(int packetSize) {
     // arms DC motor, allowing it to spin when told
     motorArmed = true;
   }
-
 }
 
 
@@ -761,4 +781,17 @@ void initESC() {
 void writeSpeed(int speed) {
   // may need some additional logic to include a deadzone, etc
   esc.writeMicroseconds(speed);
+}
+
+float PID(float error, float dt) {
+  float derivative = (error - pid.prev_error) / dt;
+  pid.integral += error * dt;
+
+  if (pid.integral > MAX_INTEGRAL) {
+    pid.integral = MAX_INTEGRAL;
+  } else if (pid.integral < -MAX_INTEGRAL) {
+    pid.integral = -MAX_INTEGRAL;
+  }
+
+  return pid.Kp * error + pid.Kt * pid.integral + pid.Kd * derivative;
 }
