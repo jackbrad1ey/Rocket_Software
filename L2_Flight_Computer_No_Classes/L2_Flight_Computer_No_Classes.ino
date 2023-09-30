@@ -47,7 +47,7 @@ bool newBaroData = false;
 bool newMSBaroData = false;
 bool sendGPS = false;
 bool calibrateMPUFlag = false;
-bool motorArmed = false;
+bool motorArmed = true;
 bool motorTesting = true;
 
 // NOTE: FILL THIS STUFF IN ONCE ESC IS CONFIGURED
@@ -58,10 +58,10 @@ bool motorTesting = true;
 #define ESC_ARM_SIGNAL     1000  // might need to be changed
 #define ESC_ARM_TIME       2000  // might need to be changed
 #define ESC_OPERATING_FREQ 24000
-#define ESC_CONTROL_PIN    9
+#define ESC_CONTROL_PIN    33
 Servo esc;
 
-int speed = ESC_NEUTRAL_PPM;
+float speed = 1488.0;
 
 typedef struct {
   float prev_error;
@@ -192,8 +192,8 @@ float error = 0;
 float pid_out = 0;
 
 float dt = 0;
-int timeNow = 0;
-int lastTime = 0;
+float timeNow = 0;
+float lastTime = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -652,22 +652,19 @@ void Task2code( void * pvParameters ) {
 void Task3code( void * pvParameters ) {
   // Serial.println("Hel me please");
   // set parameters for the control system
-  pid.Kp = -1;
-  pid.Kd = 100;
+  pid.Kp = -2.5;
+  pid.Kd = 3;
   pid.Kt = -0.001;
-  pid.max_integral = 40;
+  pid.max_integral = 300;
+
+  int start_time = millis();
 
   for (;;) {
     if (motorTesting) {
-      Serial.println("Starting motor testing");
-      delay(1000);
-      for (int i=ESC_NEUTRAL_PPM; i < ESC_MAX_PPM; i++) {
-        writeSpeed(i);
-        delay(10);
+      if (millis() - start_time > 15000) {
+        writeSpeed(ESC_NEUTRAL_PPM);
+        continue;
       }
-      writeSpeed(ESC_NEUTRAL_PPM);
-      delay(2000);
-      continue;
     } else if (!motorArmed) {
       writeSpeed(ESC_NEUTRAL_PPM);  // ensure we're not spinning the motor when it is not armed
       continue;
@@ -675,14 +672,22 @@ void Task3code( void * pvParameters ) {
 
     error = SETPOINT_ROLL - imuUnion.imuData.gyroX;
 
+    if (error < 5 & error > -5) {  // ignore noise
+      error = 0;
+    }
+
     lastTime = timeNow;
-    timeNow = millis();
+    timeNow = ((float) millis()) / 1000;
     dt = timeNow - lastTime;
 
     pid_out = PID(error, dt);  // maybe clamp output so it can't ramp up speed toooooo fast
 
     speed += pid_out * dt;  // take the integral of PID output, add to speed
-    writeSpeed(round(speed));  // send instruction to ESC
+    writeSpeed((int)(speed + 0.5));  // send instruction to ESC
+
+    char stuff[200];
+    sprintf(stuff, "Error: %f, Speed: %f, Pidout: %f, Dt: %f, rounded: %d", error, speed, pid_out, dt, (int)(speed + 0.5));
+    Serial.println(stuff);
 
     delay(10);
   }
@@ -767,14 +772,14 @@ void calibrateMPU() {
 }
 
 void initESC() {
-  esc.setPeriodHertz(ESC_OPERATING_FREQ);
-  delay(10);
-
-  esc.writeMicroseconds(ESC_NEUTRAL_PPM);
-  delay(10);
-  esc.writeMicroseconds(ESC_NEUTRAL_PPM + 100);
+  // esc.setPeriodHertz(ESC_OPERATING_FREQ);
+  // delay(10);
+  esc.writeMicroseconds(1000);
   delay(1000);
+  esc.writeMicroseconds(1200);
+  delay(1500);
   esc.writeMicroseconds(ESC_NEUTRAL_PPM);
+  delay(10);
 }
 
 void writeSpeed(int speed) {
@@ -783,6 +788,8 @@ void writeSpeed(int speed) {
     speed = ESC_MAX_PPM;
   } else if (speed < ESC_MIN_PPM) {
     speed = ESC_MIN_PPM;
+  } else if (speed > ESC_NEUTRAL_PPM - 20 & speed < ESC_NEUTRAL_PPM + 20) {  // deadzone, stop stutter when basically stationary
+    speed = ESC_NEUTRAL_PPM;
   }
 
   esc.writeMicroseconds(speed);
@@ -798,5 +805,11 @@ float PID(float error, float dt) {
     pid.integral = -pid.max_integral;
   }
 
+  pid.prev_error = error;
+
   return pid.Kp * error + pid.Kt * pid.integral + pid.Kd * derivative;
+
+  // pid.prev_error = error;
+
+  // return pid.Kp * error + pid.Kd * derivative;
 }
