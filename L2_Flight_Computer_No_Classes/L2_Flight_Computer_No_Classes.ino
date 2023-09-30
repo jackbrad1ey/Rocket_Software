@@ -23,7 +23,7 @@ void dpln(char* msg) {
 #include "SD.h"
 #include <TinyGPS++.h>
 #include <MS5611.h>
-#include <Servo.h>
+#include <ESP32Servo.h>
 
 Arduino_CRC32 crc32;
 
@@ -48,16 +48,17 @@ bool newMSBaroData = false;
 bool sendGPS = false;
 bool calibrateMPUFlag = false;
 bool motorArmed = false;
+bool motorTesting = true;
 
 // NOTE: FILL THIS STUFF IN ONCE ESC IS CONFIGURED
-#define ESC_MIN_PPM     0
-#define ESC_MAX_PPM     0
-#define ESC_NEUTRAL_PPM 0
+#define ESC_MIN_PPM        1148
+#define ESC_MAX_PPM        1832
+#define ESC_NEUTRAL_PPM    1488
 
-#define ESC_ARM_SIGNAL  1000  // might need to be changed
-#define ESC_ARM_TIME    2000  // might need to be changed
-
-#define ESC_CONTROL_PIN 33  // confirm pin number
+#define ESC_ARM_SIGNAL     1000  // might need to be changed
+#define ESC_ARM_TIME       2000  // might need to be changed
+#define ESC_OPERATING_FREQ 24000
+#define ESC_CONTROL_PIN    9
 Servo esc;
 
 int speed = ESC_NEUTRAL_PPM;
@@ -204,7 +205,7 @@ void setup() {
   pinMode(irqPin, INPUT);
   
   esc.attach(ESC_CONTROL_PIN, ESC_MIN_PPM, ESC_MAX_PPM);
-  initESC()
+  initESC();
   //create a task that will a executed in the Task1code() function, with priority 1 and executed on core 0
   xTaskCreatePinnedToCore(
     Task1code,   /* Task function. */
@@ -220,7 +221,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     Task2code,   /* Task function. */
     "Task2",     /* name of task. */
-    8000,       /* Stack size of task */
+    7000,       /* Stack size of task */
     NULL,        /* parameter of the task */
     1,           /* priority of the task */
     &Task2,      /* Task handle to keep track of created task */
@@ -230,7 +231,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     Task3code,
     "Task3",
-    2000,
+    3000,
     NULL,
     1,
     &Task3,
@@ -258,8 +259,6 @@ void Task1code( void * pvParameters ) {
   LoRa.onReceive(onReceive);
   // put the radio into receive mode
   LoRa.receive();
-
-  pinMode(MOTOR_PWM_PIN, OUTPUT);
 
   for (;;) {
     while (launchProceedure) {
@@ -653,13 +652,23 @@ void Task2code( void * pvParameters ) {
 void Task3code( void * pvParameters ) {
   // Serial.println("Hel me please");
   // set parameters for the control system
-  pid.Kd = 0;
-  pid.Kp = 0;
-  pid.Kt = 0;
-  pid.max_integral = 0;
+  pid.Kp = -1;
+  pid.Kd = 100;
+  pid.Kt = -0.001;
+  pid.max_integral = 40;
 
   for (;;) {
-    if (!motorArmed) {
+    if (motorTesting) {
+      Serial.println("Starting motor testing");
+      delay(1000);
+      for (int i=ESC_NEUTRAL_PPM; i < ESC_MAX_PPM; i++) {
+        writeSpeed(i);
+        delay(10);
+      }
+      writeSpeed(ESC_NEUTRAL_PPM);
+      delay(2000);
+      continue;
+    } else if (!motorArmed) {
       writeSpeed(ESC_NEUTRAL_PPM);  // ensure we're not spinning the motor when it is not armed
       continue;
     }
@@ -673,7 +682,7 @@ void Task3code( void * pvParameters ) {
     pid_out = PID(error, dt);  // maybe clamp output so it can't ramp up speed toooooo fast
 
     speed += pid_out * dt;  // take the integral of PID output, add to speed
-    writeSpeed(speed);  // send instruction to ESC
+    writeSpeed(round(speed));  // send instruction to ESC
 
     delay(10);
   }
@@ -758,9 +767,14 @@ void calibrateMPU() {
 }
 
 void initESC() {
-  esc.writeMicroseconds(ESC_ARM_SIGNAL);
-  unsigned long now = millis();
-  while (millis() < now + ESC_ARM_TIME){}
+  esc.setPeriodHertz(ESC_OPERATING_FREQ);
+  delay(10);
+
+  esc.writeMicroseconds(ESC_NEUTRAL_PPM);
+  delay(10);
+  esc.writeMicroseconds(ESC_NEUTRAL_PPM + 100);
+  delay(1000);
+  esc.writeMicroseconds(ESC_NEUTRAL_PPM);
 }
 
 void writeSpeed(int speed) {
@@ -778,10 +792,10 @@ float PID(float error, float dt) {
   float derivative = (error - pid.prev_error) / dt;
   pid.integral += error * dt;
 
-  if (pid.integral > MAX_INTEGRAL) {
-    pid.integral = MAX_INTEGRAL;
-  } else if (pid.integral < -MAX_INTEGRAL) {
-    pid.integral = -MAX_INTEGRAL;
+  if (pid.integral > pid.max_integral) {
+    pid.integral = pid.max_integral;
+  } else if (pid.integral < -pid.max_integral) {
+    pid.integral = -pid.max_integral;
   }
 
   return pid.Kp * error + pid.Kt * pid.integral + pid.Kd * derivative;
